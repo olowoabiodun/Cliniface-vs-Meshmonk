@@ -1,0 +1,54 @@
+Quasilandmark Remapping Using Cliniface
+•	Cliniface is a user-friendly facial mapping software that was developed to help assist clinical assessment of facial dysmorphology, which this software accomplishes using the MeshMonk implementation (Claes et al., 2019) and a symmetric anthropometric mesh. We use the Cliniface software to “remap” 3D facial scans that are generated from Vectra and 3dMD photogrammetry systems.
+•	Cliniface was described in a paper by Palmer, Helmholz, and Baynam 2020 (Palmer et al., 2020) and is available to download from ‘https://cliniface.org/download’.
+•	MeshLab and 3dMD are programs that can be used to quickly inspect the facial surface files that are generated using Cliniface to check the results after exporting the facial remapping in OBJ format.
+In-program help:	
+•	The in-app help from the menu bar and F1 key can be very useful in learning about the functions needed to run the software. This software has both terminal mode and menu/mouse applications. The steps described here are the simplest means to use the Graphical User Interface (GUI ) interface to remap and check faces.
+Steps: 
+1.	Create a folder for your remapped faces in your working directory.
+2.	Open Cliniface and import a facial OBJ file that was exported from Vectra or 3dMD into the Cliniface program. Click Ctr+O or the folder icon at the top left toolbar. Then, navigate to the folder containing your OBJ images exported from Vectra or 3dMD.
+3.	Identify the facial surface by filename, click the image, and open it. 
+4.	Record any obvious deviations from a clean, neutral facial image, such as holes in the mesh, missing under chin area, facial hair, or smile, in your Excel sheet (Fig. 8).
+5.	Extract the facial region using the ‘scissors button’ (Fig. 1a) on the Cliniface toolbar (Fig. 1b).
+6.	Register the correspondence mask and place facial landmarks by clicking the ‘face-in-box' button (Fig. 2a) on the Cliniface toolbar (Fig. 2b). Close the two windows that pop up. (Fig. 3). Observe the biological landmark points that are registered as red dots on the facial surface to ensure they are properly aligned (Fig. 4a). Fig. 4b shows an example of poorly aligned landmarks. 
+7.	Export the facial surface file into your remapped faces folder in OBJ format. Select the OBJ format option from the drop downs on the export pop-up window (Fig. 5).  Ensure that your exported meshes are all in OBJ format by checking the filenames in the folder containing your exported images (Fig. 6). Note: Be patient. Do not close the remapping window until the cursor standard again, indicting the file export is complete. 
+8.	Check facial surface files in MeshLab or 3dMD (Fig. 6&7) to see if the exported mesh resembles the face as it appeared in the original OBJ. Common remapping problems include distorted faces and missing segments including the forehead, side, or lower part of the face. 
+9.	Make notes in an appropriate spreadsheet to record your work and observations (Fig. 8).
+10.	Repeat the remapping three time saving each version with an incremented ID number.
+
+
+   
+Figure 1a&b: Click on the ‘scissors button’ to extract the facial outline.
+   
+Figure 2a&b: Register facial correspondence mask with the 'face-in-box' button. In this Window, the facial outline has been selected, unlike the above figure that shows the head and neck regions.
+
+ 
+ 
+Figure 3: Ignore these windows by clicking 'Close' and and 'OK', respectively.
+   
+Figure 4A&B: Observe the mesh placement on your image to see if the landmarks correspond with the biological landmarks on the face. In these figures,  A is well aligned, while B is poorly aligned. Move the face around to check if there are artifacts such as hollows, missing facial parts, smiles, or facial hair such as beards. Report your observations in the spreadsheet (Fig. 8) . 
+
+ 
+Figure 5: Select the OBJ format from the dropdown.
+  
+Figure 6: You can check the suffix of the file names in the exported-faces folder to ensure that the exported files' format is consistently OBJ and none of them is PLY. Also, ensure that the remapping attempt (1 – 1st, 2 – 2nd, and 3 -3rd) is appended as an underscore (_1, _2, or _3) to the file name. Also, observe the size of the files; files that are significantly smaller than others are not properly exported.
+OBJ 
+ 
+ 
+Figure 7: Check your exported image on Cliniface using the wireframe view option. Watch out for the symmetry line for radial symmetry and record any observable distortions in the Excel sheet.
+  
+Figure 8: Spreadsheet for recording observations and status of registration.
+ 
+Bibliography
+
+Claes, P., Fan, Y., Penington, T., Ortega-Castrillón, A., White, J., Zaidi, A., Ekrami, O., Shriver, M., VanDongen, S., Snyders, J., & Matthews, H. (2019). MeshMonk: Open-source large-scale intensive 3D phenotyping. Scientific Reports, 9(1). https://doi.org/10.1038/s41598-019-42533-y
+Palmer, R. L., Helmholz, P., & Baynam, G. (2020). CLINIFACE: PHENOTYPIC VISUALISATION and ANALYSIS USING NON-RIGID REGISTRATION of 3D FACIAL IMAGES. International Archives of the Photogrammetry, Remote Sensing and Spatial Information Sciences - ISPRS Archives, 43(B2). https://doi.org/10.5194/isprs-archives-XLIII-B2-2020-301-2020
+ 
+Video Tutorial Link
+1.	Collecting 3D images using Vectra H2 without tethering (https://www.youtube.com/watch?v=qdp8TfqEzwI)
+2.	Using Cliniface (https://www.youtube.com/watch?v=dq78HLONRxA)
+
+
+
+
+
