@@ -1,0 +1,429 @@
+---
+title: "Cliniface_vs_Meshmonk"
+author: "Abiodun Olowo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(readr)      # For file writing functions
+library(ggplot2)    # For plotting
+library(dplyr)      # For data manipulation
+```
+### Additional Debugging Tips:
+
+
+# Chunk 1A: Load and Validate Mesh Files
+
+```{r Load Vertices, echo=FALSE, message=FALSE, warning=FALSE}
+# === Load required libraries ===
+library(fs)
+library(purrr)
+library(stringr)
+library(tibble)
+library(dplyr)
+library(geomorph)
+
+# === Define folders ===
+folder_MM <- "C:/Users/ayo5146/Documents/CLINIFACE_VS_MESHMONK/Meshmonk"
+folder_CF <- "C:/Users/ayo5146/Documents/CLINIFACE_VS_MESHMONK/Cliniface"
+output_dir <- "C:/Users/ayo5146/Documents/CLINIFACE_VS_MESHMONK"
+dir.create(output_dir, showWarnings = FALSE)
+
+# === List OBJ files ===
+files_MM <- dir_ls(folder_MM, regexp = "\\.obj$")
+files_CF <- dir_ls(folder_CF, regexp = "\\.obj$")
+
+# === Extract base names ===
+get_basename <- function(x) tools::file_path_sans_ext(basename(x))
+basenames_MM <- map_chr(files_MM, get_basename)
+basenames_CF <- map_chr(files_CF, get_basename)
+
+# === Validate filenames ===
+valid_pattern <- "^[FM][EKIYS][0-9]{3}(MM|CF)$"  # Updated regex
+valid_pops <- c("E", "K", "I", "Y", "S")        # Valid population codes
+
+# Validate format and population codes
+validate_name <- function(names, method) {
+  format_ok <- str_detect(names, valid_pattern)
+  pop_ok <- str_sub(names, 2, 2) %in% valid_pops
+  format_ok & pop_ok
+}
+
+valid_MM <- validate_name(basenames_MM, "MM")
+valid_CF <- validate_name(basenames_CF, "CF")
+
+valid_files_MM <- files_MM[valid_MM]
+valid_files_CF <- files_CF[valid_CF]
+invalid_files_MM <- files_MM[!valid_MM]
+invalid_files_CF <- files_CF[!valid_CF]
+
+# === Report and export invalids ===
+write_lines(invalid_files_MM, file.path(output_dir, "invalid_filenames_MM.txt"))
+write_lines(invalid_files_CF, file.path(output_dir, "invalid_filenames_CF.txt"))
+cat("✅ MM valid:", length(valid_files_MM), " | invalid:", length(invalid_files_MM), "\n")
+cat("✅ CF valid:", length(valid_files_CF), " | invalid:", length(invalid_files_CF), "\n")
+
+# === Extract metadata ===
+extract_metadata <- function(names) {
+  tibble(
+    filename = names,
+    Sex = str_sub(names, 1, 1),
+    Pop = str_sub(names, 2, 2),
+    Method = str_sub(names, 6, 7),
+    BaseID = str_sub(names, 1, 5)  # Sex + Pop + 3-digit ID
+  )
+}
+
+metadata_MM <- extract_metadata(basenames_MM[valid_MM])
+metadata_CF <- extract_metadata(basenames_CF[valid_CF])
+metadata <- bind_rows(metadata_MM, metadata_CF)
+
+# === Load vertex data ===
+source("load_vertices_unfilteredc.R")
+meshes_MM <- map(valid_files_MM, load_all_vertices_unfiltered)
+meshes_CF <- map(valid_files_CF, load_all_vertices_unfiltered)
+
+# === Combine ===
+all_meshes_raw <- c(meshes_MM, meshes_CF)
+final_valid_files <- c(valid_files_MM, valid_files_CF)
+
+# === Check for NA and consistent vertex count ===
+has_na <- map_lgl(all_meshes_raw, ~ any(is.na(.x)))
+all_meshes_raw <- all_meshes_raw[!has_na]
+final_valid_files <- final_valid_files[!has_na]
+
+vertex_counts <- map_int(all_meshes_raw, nrow)
+if (length(unique(vertex_counts)) > 1) {
+  stop("❌ Meshes have inconsistent vertex counts.")
+}
+n_vertices <- vertex_counts[1]
+n_shapes <- length(all_meshes_raw)
+```
+# Chunk 1B: Build Metadata and Run GPA
+```{r Build Metadata and GPA, echo=FALSE, message=FALSE, warning=FALSE}
+# === Build shape array ===
+vertex_array <- array(NA, dim = c(n_vertices, 3, n_shapes))
+for (i in seq_len(n_shapes)) {
+  vertex_array[,,i] <- all_meshes_raw[[i]]
+}
+
+# === Build metadata (Updated for new naming convention) ===
+extract_info <- function(name) {
+  tibble(
+    filename = name,
+    Sex = str_sub(name, 1, 1),        # First character: F/M
+    Pop = str_sub(name, 2, 2),        # Second character: E/K/I/Y/S
+    Method = str_sub(name, 6, 7),      # Last 2 characters: MM/CF
+    BaseID = str_sub(name, 1, 5)      # First 5 chars (e.g., FE001)
+  )
+}
+
+# Use final_valid_files (from Chunk 1A) to ensure consistency
+metadata <- map_dfr(map_chr(final_valid_files, get_basename), extract_info)
+
+# === Validate metadata ===
+# Check for valid population codes
+valid_pops <- c("E", "K", "I", "Y", "S")
+invalid_pops <- metadata %>% 
+  filter(!Pop %in% valid_pops) %>% 
+  distinct(Pop)
+
+if (nrow(invalid_pops) > 0) {
+  warning("⚠️ Invalid population codes detected: ", paste(invalid_pops$Pop, collapse = ", "))
+}
+
+# === Final sanity checks ===
+stopifnot(
+  nrow(metadata) == dim(vertex_array)[3],
+  all(metadata$Method %in% c("MM", "CF")),
+  all(metadata$Sex %in% c("F", "M"))
+)
+cat("✅ Loaded and aligned:", nrow(metadata), "meshes\n")
+
+# === Run GPA ===
+cat("🔄 Performing Generalized Procrustes Alignment...\n")
+gpa_result <- gpagen(vertex_array, print.progress = TRUE)
+aligned_coords <- gpa_result$coords
+consensus_shape <- mshape(aligned_coords)
+cat("✅ GPA completed.\n")
+# Quick verification
+glimpse(metadata)
+table(metadata$Pop, metadata$Method)
+stopifnot(dim(aligned_coords)[3] == nrow(metadata))
+```
+
+# === Export key objects for Chunk 2 ===
+# (aligned_coords and metadata are now ready for pairwise comparisons)
+
+# === Chunk 2: Find Matched Pairs and Compute Distances ===
+
+# Chunk 2: Corrected Pairwise Comparisons
+```{r Get base IDs, echo=FALSE, message=FALSE, warning=FALSE}
+# === Step 1: Verify Metadata Structure ===
+required_cols <- c("BaseID", "Method", "filename")
+missing_cols <- setdiff(required_cols, colnames(metadata))
+if (length(missing_cols) > 0) {
+  stop("❌ Missing columns in metadata: ", paste(missing_cols, collapse = ", "))
+}
+
+# === Step 2: Reorganize Metadata ===
+# Sort metadata to ensure MM and CF scans are adjacent for each BaseID
+metadata_sorted <- metadata %>%
+  arrange(BaseID, Method)  # MM comes before CF in alphabetical order
+
+# === Step 3: Find Valid MM-CF Pairs ===
+pairwise_comparisons <- metadata_sorted %>%
+  # Add original row numbers after sorting
+  mutate(row_num = row_number()) %>%  
+  group_by(BaseID) %>%
+  # Ensure exactly 1 MM and 1 CF scan per subject
+  filter(n() == 2, all(c("MM", "CF") %in% Method)) %>%
+  # Extract row numbers - MM is always first in each group due to sorting
+  summarise(
+    row_MM = row_num[Method == "MM"],  # Row of MM scan
+    row_CF = row_num[Method == "CF"],  # Row of CF scan
+    .groups = "drop"
+  )
+
+# === Check 1: Confirm Pairs Exist ===
+if (nrow(pairwise_comparisons) == 0) {
+  stop("❌ No MM-CF pairs found. Check metadata for inconsistent BaseIDs.")
+} else {
+  cat("✅ Found", nrow(pairwise_comparisons), "valid MM-CF pairs.\n")
+}
+
+# === Check 2: Validate Row Numbers ===
+max_row <- max(c(pairwise_comparisons$row_MM, pairwise_comparisons$row_CF))
+if (max_row > dim(aligned_coords)[3]) {
+  stop(
+    "❌ Row numbers exceed aligned_coords dimensions.\n",
+    "Max row:", max_row, "| aligned_coords size:", dim(aligned_coords)[3]
+  )
+}
+
+# === Step 4: Compute Distances ===
+pairwise_comparisons <- pairwise_comparisons %>%
+  mutate(
+    # Calculate RMSE (vertex-wise Euclidean distances)
+    RMSE = map2_dbl(
+      row_MM, row_CF, 
+      ~ sqrt(mean((aligned_coords[, , .x] - aligned_coords[, , .y])^2))
+    ),
+    # Calculate Procrustes distance (global shape difference)
+    ProcrustesDistance = map2_dbl(
+      row_MM, row_CF,
+      ~ sqrt(sum((aligned_coords[, , .x] - aligned_coords[, , .y])^2))
+    )
+  )
+
+# === Check 3: Verify Distance Variation ===
+if (sd(pairwise_comparisons$RMSE) < 0.0001) {
+  warning("⚠️ RMSE values show suspiciously low variation. Verify data pairing.")
+}
+
+# === Final Output ===
+glimpse(pairwise_comparisons)
+cat("✅ Chunk 2 completed successfully.\n")
+
+# Export results
+write_csv(pairwise_comparisons, file.path(output_dir, "pairwise_distances.csv"))
+```
+
+
+# Chunk 3: Statistical Analysis Preparation
+```{r Stats_MM_CF, echo=FALSE, message=FALSE, warning=FALSE}
+# === Data Validation Checks ===
+# 1. Verify metadata structure
+required_meta_cols <- c("BaseID", "Method", "Sex", "Pop")
+missing_meta_cols <- setdiff(required_meta_cols, colnames(metadata))
+if (length(missing_meta_cols) > 0) {
+  stop("❌ Missing columns in metadata: ", paste(missing_meta_cols, collapse = ", "))
+}
+
+# 2. Check aligned coordinates dimensions
+cat("Dimensions of aligned_coords:", dim(aligned_coords), "\n")  # Should be [n_vertices, 3, n_shapes]
+stopifnot(
+  "aligned_coords should be 3D array" = length(dim(aligned_coords)) == 3,
+  "Metadata/aligned_coords mismatch" = nrow(metadata) == dim(aligned_coords)[3]
+)
+
+# 3. Validate pairwise comparisons structure
+cat("\n=== Pairwise Comparisons Structure ===\n")
+glimpse(pairwise_comparisons)
+stopifnot(
+  all(c("BaseID", "row_MM", "row_CF", "RMSE", "ProcrustesDistance") %in% 
+        names(pairwise_comparisons))
+)
+
+# === Data Quality Checks ===
+# 1. Verify RMSE calculation
+idx1 <- pairwise_comparisons$row_MM[1]
+idx2 <- pairwise_comparisons$row_CF[1]
+test_RMSE <- sqrt(mean((aligned_coords[, , idx1] - aligned_coords[, , idx2])^2))
+cat("\nTest RMSE for first pair:", test_RMSE, "| Stored value:", 
+    pairwise_comparisons$RMSE[1], "\n")
+stopifnot(abs(test_RMSE - pairwise_comparisons$RMSE[1]) < 1e-10)
+
+# 2. Check vertex count consistency
+vertex_counts <- map_int(1:dim(aligned_coords)[3], ~ nrow(aligned_coords[, , .x]))
+if (length(unique(vertex_counts)) != 1) {
+  warning("⚠️ Inconsistent vertex counts detected: ", 
+          paste(range(vertex_counts), collapse = "-"))
+} else {
+  cat("✔ Consistent vertex count:", vertex_counts[1], "\n")
+}
+
+# === Merge Metadata ===
+pairwise_enhanced <- pairwise_comparisons %>%
+  left_join(
+    metadata %>% 
+      filter(Method == "MM") %>%  # Only need one record per BaseID
+      select(BaseID, Sex, Pop),
+    by = "BaseID"
+  )
+
+# Verify merge success
+if (any(is.na(pairwise_enhanced$Sex))) {
+  warning("⚠️ Missing demographic data for some subjects")
+}
+
+# === Prepare Final Results ===
+results_columns <- c("BaseID", "ProcrustesDistance", "RMSE", "Sex", "Pop")
+final_results <- pairwise_enhanced %>%
+  select(all_of(results_columns)) %>%
+  rename(
+    ProcrustesDistance_MM_vs_CF = ProcrustesDistance,
+    RMSE_MM_vs_CF = RMSE
+  )
+
+# === Output Preview ===
+cat("\n=== Final Results Structure ===\n")
+glimpse(final_results)
+cat("\n✅ Chunk 3 completed successfully. Ready for statistical analysis.\n")
+
+# Export prepared data
+write_csv(final_results, file.path(output_dir, "analysis_ready_data.csv"))
+```
+
+
+# Chunk 4: Publication-ready Outputs
+```{r Publication-ready Outputs, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(gt)
+library(ggridges)
+library(kableExtra)
+
+# === Data Validation ===
+stopifnot(
+  exists("final_results"),  # From Chunk 3
+  exists("aligned_coords"),
+  file.exists(output_dir)
+)
+
+# 1. Create missing data objects if needed
+if (!exists("pop_summary")) {
+  pop_summary <- final_results %>%
+    group_by(Pop) %>%
+    summarise(
+      mean_RMSE = mean(RMSE_MM_vs_CF),
+      sd_RMSE = sd(RMSE_MM_vs_CF),
+      n = n(),
+      .groups = "drop"
+    )
+}
+
+if (!exists("pairwise_with_meta")) {
+  pairwise_with_meta <- final_results  # Use Chunk 3 output
+}
+
+# === 1. Summary Table ===
+pop_table <- pop_summary %>%
+  gt() %>%
+  tab_header(title = "RMSE Summary by Population") %>%
+  fmt_number(columns = where(is.numeric), decimals = 4) %>%
+  cols_label(
+    mean_RMSE = "Mean RMSE",
+    sd_RMSE = "SD",
+    n = "Sample Size"
+  )
+
+print(pop_table)
+
+# === 2. RMSE vs Sample Size ===
+p1 <- ggplot(pop_summary, aes(x = n, y = mean_RMSE)) +
+  geom_point(aes(size = n), alpha = 0.8) +
+  geom_errorbar(aes(ymin = mean_RMSE-sd_RMSE, ymax = mean_RMSE+sd_RMSE), 
+                width = 0.1, color = "gray50") +
+  geom_smooth(method = "lm", formula = y ~ x, se = TRUE, color = "steelblue") +
+  labs(title = "Mean RMSE vs Population Sample Size", 
+       subtitle = "Error bars show ±1 SD",
+       x = "Sample Size (n)", 
+       y = "Mean RMSE") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+
+ggsave(file.path(output_dir, "RMSE_vs_sample_size.png"), 
+       plot = p1, width = 7, height = 5, dpi = 300)
+
+# Check available columns in your data
+glimpse(pairwise_with_meta)
+# or
+names(pairwise_with_meta)
+# 3. Ridgeline Plot (using Pop_MM since populations should match within pairs)
+p2 <- ggplot(pairwise_with_meta, aes(x = RMSE, y = Pop_MM, fill = Pop_MM)) +
+  geom_density_ridges(
+    alpha = 0.7, 
+    scale = 0.9,
+    quantile_lines = TRUE,
+    quantiles = 2  # Shows median line
+  ) +
+  scale_fill_viridis_d(option = "plasma", name = "Population") +
+  labs(
+    title = "RMSE Distribution by Population",
+    subtitle = "Using MM scan population classification",
+    x = "RMSE (MM vs CF)", 
+    y = ""
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+
+ggsave(file.path(output_dir, "RMSE_distribution_by_population.png"), 
+       plot = p2, width = 7, height = 5, dpi = 300)
+
+# === 4. ICC Plot (if data exists) ===
+if (exists("icc_values")) {
+  p3 <- ggplot(icc_values, aes(x = MM, y = CF)) +
+    geom_hex(bins = 30) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    scale_fill_viridis_c(option = "magma") +
+    labs(title = "Shape Correspondence Between MM and CF",
+         x = "MM Shape Vector", 
+         y = "CF Shape Vector") +
+    theme_minimal(base_size = 12)
+  
+  ggsave(file.path(output_dir, "MM_CF_correspondence.png"), 
+         plot = p3, width = 6, height = 5, dpi = 300)
+} else {
+  warning("⚠️ icc_values not found - skipping correspondence plot")
+}
+
+# === 5. Displacement Statistics ===
+if (exists("mean_disp")) {
+  displacement_summary <- tibble(
+    Metric = c("Min", "Mean", "Median", "SD", "Max", "95th Percentile"),
+    Value = c(min(mean_disp), mean(mean_disp), median(mean_disp),
+              sd(mean_disp), max(mean_disp), quantile(mean_disp, 0.95))
+  )
+  
+  print(displacement_summary)
+  write_csv(displacement_summary, file.path(output_dir, "displacement_summary.csv"))
+} else {
+  warning("⚠️ mean_disp not found - skipping displacement statistics")
+}
+
+cat("✅ Chunk 4 completed. Outputs saved to:", output_dir, "\n")
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
